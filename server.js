@@ -153,15 +153,21 @@ async function runSocketServer() {
       console.log(`User joined room: ${roomId}`);
       
       // 방에 프로듀서가 존재하는 경우 클라이언트에게 알림
-      // [ ] 프로듀서 정보 4개를 다 알려주는 방식으로 변경 필요,  'newProducer'말고 다른 명령어 만들기
-      if (roomProducers[roomId]) {
-        // socket.emit('newProducer', { roomId });
+      // [x] 프로듀서 정보 4개를 다 알려주는 방식으로 변경 필요,  'newProducer'말고 다른 명령어 만들기
+      // NOTE 정보 요청은 클라리언트에서 따로 request를 보내는 형식으로 변경
+      // if (roomProducers[roomId]) {
+      //   // socket.emit('newProducer', { roomId });
         
-        // producer를 저장하고 있는 객체를 반환함
-        socket.emit('getProducers', roomProducers[roomId]);
-        console.log(roomProducers[roomId]);
-      }
+      //   // producer를 저장하고 있는 객체를 반환함
+      //   socket.to(roomId).emit('getProducers', roomProducers[roomId]);
+      //   console.log(roomProducers[roomId]);
+      // }
     });
+
+    // NOTE 현재 room에 있는 producer의 정보를 return 함
+    socket.on('getProducers',(roomId, callback)=>{
+      callback(roomProducers[roomId]);
+    } )
 
     socket.on('leaveRoom', (roomId) => {
       socket.leave(roomId);  // 방 떠나기
