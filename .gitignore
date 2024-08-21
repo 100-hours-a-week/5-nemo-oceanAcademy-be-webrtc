@@ -4,3 +4,6 @@ package-lock.json
 # config.js
 app-bundle.js
 .env
+server.key
+server.pem
+server.crt

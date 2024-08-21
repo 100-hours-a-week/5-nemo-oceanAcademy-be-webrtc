@@ -11,6 +11,7 @@ module.exports = {
   listenPort: serverPort, //serverPort, // 소캣연결포트번호
   sslCrt: sslCrt, // '/usr/local/etc/ssl/server.crt',
   sslKey: sslKey, //'/usr/local/etc/ssl/server.key',
+
   mediasoup: {
     // Worker settings
     worker: {

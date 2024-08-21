@@ -27,7 +27,14 @@ let producer;
 let consumer;
 let producerTransport;
 let consumerTransport;
-let mediasoupRouter;
+let mediasoupRouter; 
+
+const Producers = {
+  WEBCAM_VIDEO: 'webcamVideo',
+  WEBCAM_AUDIO: 'webcamAudio',
+  SCREEN_SHARE_VIDEO: 'screenShareVideo',
+  SCREEN_SHARE_AUDIO: 'screenShareAudio'
+}
 
 const roomProducers = {}; // 각 방에 대한 프로듀서 관리
 const roomConsumers = {}; // 각 방에 대한 소비자 관리
@@ -126,20 +133,40 @@ async function runSocketServer() {
   socketServer.on('connection', (socket) => {
     console.log('client connected');
 
+
+    // teacher가 socket을 시작할 때 producer 저장을 위해 초기화를 진행합니다.
+    socket.on('startRoom', (roomId) => {
+      socket.join(roomId);
+      console.log(`User started room: ${roomId}`);
+
+      // roomId의 producer들을 저장하기 위해 객체를 만들어 둠
+      roomProducers[roomId] = {};
+      roomConsumers[roomId] = {}; 
+      roomProducerTransports[roomId] = {}; 
+      roomConsumerTransports[roomId] = {}; 
+      
+      // [x] 다 초기화 하기
+    });
+
+
     // inform the client about existence of producer
     //클라이언트가 연결되면 현재 서버에 존재하는 프로듀서가 있으면 이를 클라이언트에 알립니다.
     //socket.emit('newProducer')는 클라이언트에게 newProducer 이벤트를 발생시킵니다.
-
     // 클라이언트로부터 방 참가 요청 수신
     socket.on('joinRoom', (roomId) => {
       socket.join(roomId);
       console.log(`User joined room: ${roomId}`);
       
       // 방에 프로듀서가 존재하는 경우 클라이언트에게 알림
-      if (roomProducers[roomId]) {
-        socket.emit('newProducer', { roomId });
-      }
+      // [x] 프로듀서 정보 4개를 다 알려주는 방식으로 변경 필요,  'newProducer'말고 다른 명령어 만들기
+      // NOTE 정보 요청은 클라리언트에서 따로 request를 보내는 형식으로 변경
     });
+
+    // NOTE 현재 room에 있는 producer의 정보를 return 함
+    // 잘 return 하고 있음...
+    socket.on('getProducers',(roomId, callback)=>{
+      callback(roomProducers[roomId]);
+    } )
 
     socket.on('leaveRoom', (roomId) => {
       socket.leave(roomId);  // 방 떠나기
@@ -163,11 +190,13 @@ async function runSocketServer() {
 
     //클라이언트가 createProducerTransport 이벤트를 발생시키면
     //새로운 WebRTC 트랜스포트를 생성하고, producerTransport를 설정합니다.
+    // [ ] roomId당 하나의 transport만 저장하고 있음
+    // [ ] producerKind도 받아야함
     socket.on('createProducerTransport', async (data, callback) => {
       try {
-        const { roomId } = data;
+        const { roomId, producerKind } = data;
         const { transport, params } = await createWebRtcTransport();
-        roomProducerTransports[roomId] = transport;
+        roomProducerTransports[roomId][producerKind] = transport;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -179,9 +208,9 @@ async function runSocketServer() {
     //consumerTransport를 설정합니다.
     socket.on('createConsumerTransport', async (data, callback) => {
       try {
-        const { roomId } = data;
+        const { roomId, producerKind } = data;
         const { transport, params } = await createWebRtcTransport();
-        roomConsumerTransports[roomId] = transport;
+        roomConsumerTransports[roomId][producerKind] = transport;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -192,16 +221,16 @@ async function runSocketServer() {
     //클라이언트가 connectProducerTransport 이벤트를 발생시키면, 
     //producerTransport에 클라이언트의 DTLS 파라미터를 사용하여 연결합니다.
     socket.on('connectProducerTransport', async (data, callback) => {
-      const { roomId, dtlsParameters } = data;
-      await roomProducerTransports[roomId].connect({ dtlsParameters: data.dtlsParameters });
+      const { roomId, producerKind, dtlsParameters } = data;
+      await roomProducerTransports[roomId][producerKind].connect({ dtlsParameters: data.dtlsParameters });
       callback();
     });
 
     //클라이언트가 connectConsumerTransport 이벤트를 발생시키면, 
     //consumerTransport에 클라이언트의 DTLS 파라미터를 사용하여 연결합니다.
     socket.on('connectConsumerTransport', async (data, callback) => {
-      const { roomId, dtlsParameters } = data;
-      await roomConsumerTransports[roomId].connect({ dtlsParameters: data.dtlsParameters });
+      const { roomId, dtlsParameters, producerKind} = data;
+      await roomConsumerTransports[roomId][producerKind].connect({ dtlsParameters: data.dtlsParameters });
       callback();
     });
 
@@ -211,30 +240,44 @@ async function runSocketServer() {
     새로운 프로듀서가 생성되었음을 모든 다른 클라이언트에게 알립니다 (socket.broadcast.emit('newProducer')).
     */
     socket.on('produce', async (data, callback) => {
-      const { roomId, kind, rtpParameters } = data;
-      producer = await roomProducerTransports[roomId].produce({ kind, rtpParameters });
-      roomProducers[roomId] = producer;
+      // [x] 어떤 영상/음성 보내는지 추가로 전송필요 -> producerKind를 입력받기
+      const { roomId, kind, rtpParameters, producerKind } = data;
+      producer = await roomProducerTransports[roomId][producerKind].produce({ kind, rtpParameters });
+      
+      // [x] 저장 로직 변경 필요
+      roomProducers[roomId][producerKind] = producer;
       callback({ id: producer.id });
 
       // 방에 있는 다른 클라이언트들에게 새로운 프로듀서가 있음을 알림
-      socket.to(roomId).emit('newProducer', { roomId });
+      // [x] 'newProducer' 로, roomId랑 producerKind를 알려줘야 함
+      // NOTE : 저장 로직을 변경해서 consumer 생성 로직도 변경해야함
+      socket.to(roomId).emit('newProducer', { roomId, producerKind });
     });
 
     /*
     클라이언트가 consume 이벤트를 발생시키면, createConsumer 함수를 사용하여 미디어 소비자를 생성하고, 생성된 소비자의 정보를 클라이언트에 반환합니다.
     */
     socket.on('consume', async (data, callback) => {
-      const { roomId, rtpCapabilities } = data;
-      const consumer = await createConsumer(roomId, rtpCapabilities);
+      const { roomId, producerKind, rtpCapabilities } = data;
+      const consumer = await createConsumer(roomId, producerKind, rtpCapabilities);
       callback(consumer);
     });
 
     //클라이언트가 resume 이벤트를 발생시키면, 일시 중지된 소비자를 재개하고 콜백을 호출합니다.
     socket.on('resume', async (data, callback) => {
-      const { roomId } = data;
-      await roomConsumers[roomId].resume();
+      const { roomId, producerKind } = data;
+      // [x] consumer 저장 로직 수정 필요
+      // NOTE : client 당 consumer를 저장하는 로직이 필요할 수도 있음
+      await roomConsumers[roomId][producerKind].resume();
       callback();
     });
+
+    socket.on('newProducer', async ({ roomId, producerId, producerKind }) => {
+      console.log('Received Producer ID:', producerId); // 로그 추가
+      console.log('Received Producer Kind:', producerKind); // 로그 추가
+      socket.to(roomId).emit('newProducer', { roomId, producerId, producerKind });
+    });
+  
   });
 }
 
@@ -309,19 +352,37 @@ consumerTransport.consume()를 사용하여 소비자를 생성하고, 소비자
 소비자 정보를 반환합니다.
 */
 /* 특정 방에 대한 미디어 소비자 생성 함수 */
-async function createConsumer(roomId, rtpCapabilities) {
-  const producer = roomProducers[roomId];
-  if (!producer || !mediasoupRouter.canConsume({ producerId: producer.id, rtpCapabilities })) {
-    console.error('Cannot consume');
+async function createConsumer(roomId, producerKind, rtpCapabilities) {
+  console.log('createConsumer called with:', { roomId, rtpCapabilities });
+
+  // [x] producer 받는 로직 변경하기 
+  // [ ] roomId, producerKind -> undefined 
+  console.log(roomId, producerKind);
+  const producer = roomProducers[roomId][producerKind];
+  if (!producer) {
+    console.error(`No producer found for roomId: ${roomId}`);
     return;
   }
+
+  console.log('Producer found:', producer);
+
+  const canConsume = mediasoupRouter.canConsume({ producerId: producer.id, rtpCapabilities });
+  console.log('Can consume:', canConsume);
+
+  if (!canConsume) {
+    console.error(`Cannot consume: Producer ID: ${producer.id}, Room ID: ${roomId}`);
+    console.error('RTP Capabilities:', rtpCapabilities);
+    return;
+  }
+  
   try {
-    const consumer = await roomConsumerTransports[roomId].consume({
+    // [ ] video라고 작성되어있는데 audio도 가능한 건지??
+    const consumer = await roomConsumerTransports[roomId][producerKind].consume({
       producerId: producer.id,
       rtpCapabilities,
       paused: producer.kind === 'video',
     });
-    roomConsumers[roomId] = consumer;
+    roomConsumers[roomId][producerKind] = consumer;
 
     if (consumer.type === 'simulcast') {
       await consumer.setPreferredLayers({ spatialLayer: 2, temporalLayer: 2 });
