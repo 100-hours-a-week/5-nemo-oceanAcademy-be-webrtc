@@ -190,8 +190,8 @@ async function runSocketServer() {
 
     //클라이언트가 createProducerTransport 이벤트를 발생시키면
     //새로운 WebRTC 트랜스포트를 생성하고, producerTransport를 설정합니다.
-    // [ ] roomId당 하나의 transport만 저장하고 있음
-    // [ ] producerKind도 받아야함
+    // [x] roomId당 여러 개의 transport만 저장
+    // [x] producerKind도 받아야함
     socket.on('createProducerTransport', async (data, callback) => {
       try {
         const { roomId, producerKind } = data;
@@ -376,7 +376,7 @@ async function createConsumer(roomId, producerKind, rtpCapabilities) {
   }
   
   try {
-    // [ ] video라고 작성되어있는데 audio도 가능한 건지??
+    // [x] audio 처리
     const consumer = await roomConsumerTransports[roomId][producerKind].consume({
       producerId: producer.id,
       rtpCapabilities,
@@ -384,7 +384,7 @@ async function createConsumer(roomId, producerKind, rtpCapabilities) {
     });
     roomConsumers[roomId][producerKind] = consumer;
 
-    if (consumer.type === 'simulcast') {
+    if (consumer.type === 'simulcast' && producer.kind === 'video') {
       await consumer.setPreferredLayers({ spatialLayer: 2, temporalLayer: 2 });
     }
 
