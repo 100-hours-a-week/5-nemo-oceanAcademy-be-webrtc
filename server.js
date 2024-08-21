@@ -141,6 +141,11 @@ async function runSocketServer() {
 
       // roomId의 producer들을 저장하기 위해 객체를 만들어 둠
       roomProducers[roomId] = {};
+      roomConsumers[roomId] = {}; 
+      roomProducerTransports[roomId] = {}; 
+      roomConsumerTransports[roomId] = {}; 
+      
+      // [x] 다 초기화 하기
     });
 
 
@@ -155,16 +160,10 @@ async function runSocketServer() {
       // 방에 프로듀서가 존재하는 경우 클라이언트에게 알림
       // [x] 프로듀서 정보 4개를 다 알려주는 방식으로 변경 필요,  'newProducer'말고 다른 명령어 만들기
       // NOTE 정보 요청은 클라리언트에서 따로 request를 보내는 형식으로 변경
-      // if (roomProducers[roomId]) {
-      //   // socket.emit('newProducer', { roomId });
-        
-      //   // producer를 저장하고 있는 객체를 반환함
-      //   socket.to(roomId).emit('getProducers', roomProducers[roomId]);
-      //   console.log(roomProducers[roomId]);
-      // }
     });
 
     // NOTE 현재 room에 있는 producer의 정보를 return 함
+    // 잘 return 하고 있음...
     socket.on('getProducers',(roomId, callback)=>{
       callback(roomProducers[roomId]);
     } )
@@ -191,11 +190,13 @@ async function runSocketServer() {
 
     //클라이언트가 createProducerTransport 이벤트를 발생시키면
     //새로운 WebRTC 트랜스포트를 생성하고, producerTransport를 설정합니다.
+    // [ ] roomId당 하나의 transport만 저장하고 있음
+    // [ ] producerKind도 받아야함
     socket.on('createProducerTransport', async (data, callback) => {
       try {
-        const { roomId } = data;
+        const { roomId, producerKind } = data;
         const { transport, params } = await createWebRtcTransport();
-        roomProducerTransports[roomId] = transport;
+        roomProducerTransports[roomId][producerKind] = transport;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -207,9 +208,9 @@ async function runSocketServer() {
     //consumerTransport를 설정합니다.
     socket.on('createConsumerTransport', async (data, callback) => {
       try {
-        const { roomId } = data;
+        const { roomId, producerKind } = data;
         const { transport, params } = await createWebRtcTransport();
-        roomConsumerTransports[roomId] = transport;
+        roomConsumerTransports[roomId][producerKind] = transport;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -220,16 +221,16 @@ async function runSocketServer() {
     //클라이언트가 connectProducerTransport 이벤트를 발생시키면, 
     //producerTransport에 클라이언트의 DTLS 파라미터를 사용하여 연결합니다.
     socket.on('connectProducerTransport', async (data, callback) => {
-      const { roomId, dtlsParameters } = data;
-      await roomProducerTransports[roomId].connect({ dtlsParameters: data.dtlsParameters });
+      const { roomId, producerKind, dtlsParameters } = data;
+      await roomProducerTransports[roomId][producerKind].connect({ dtlsParameters: data.dtlsParameters });
       callback();
     });
 
     //클라이언트가 connectConsumerTransport 이벤트를 발생시키면, 
     //consumerTransport에 클라이언트의 DTLS 파라미터를 사용하여 연결합니다.
     socket.on('connectConsumerTransport', async (data, callback) => {
-      const { roomId, dtlsParameters } = data;
-      await roomConsumerTransports[roomId].connect({ dtlsParameters: data.dtlsParameters });
+      const { roomId, dtlsParameters, producerKind} = data;
+      await roomConsumerTransports[roomId][producerKind].connect({ dtlsParameters: data.dtlsParameters });
       callback();
     });
 
@@ -241,7 +242,7 @@ async function runSocketServer() {
     socket.on('produce', async (data, callback) => {
       // [x] 어떤 영상/음성 보내는지 추가로 전송필요 -> producerKind를 입력받기
       const { roomId, kind, rtpParameters, producerKind } = data;
-      producer = await roomProducerTransports[roomId].produce({ kind, rtpParameters });
+      producer = await roomProducerTransports[roomId][producerKind].produce({ kind, rtpParameters });
       
       // [x] 저장 로직 변경 필요
       roomProducers[roomId][producerKind] = producer;
@@ -264,8 +265,10 @@ async function runSocketServer() {
 
     //클라이언트가 resume 이벤트를 발생시키면, 일시 중지된 소비자를 재개하고 콜백을 호출합니다.
     socket.on('resume', async (data, callback) => {
-      const { roomId } = data;
-      await roomConsumers[roomId].resume();
+      const { roomId, producerKind } = data;
+      // [x] consumer 저장 로직 수정 필요
+      // NOTE : client 당 consumer를 저장하는 로직이 필요할 수도 있음
+      await roomConsumers[roomId][producerKind].resume();
       callback();
     });
 
@@ -374,12 +377,12 @@ async function createConsumer(roomId, producerKind, rtpCapabilities) {
   
   try {
     // [ ] video라고 작성되어있는데 audio도 가능한 건지??
-    const consumer = await roomConsumerTransports[roomId].consume({
+    const consumer = await roomConsumerTransports[roomId][producerKind].consume({
       producerId: producer.id,
       rtpCapabilities,
       paused: producer.kind === 'video',
     });
-    roomConsumers[roomId] = consumer;
+    roomConsumers[roomId][producerKind] = consumer;
 
     if (consumer.type === 'simulcast') {
       await consumer.setPreferredLayers({ spatialLayer: 2, temporalLayer: 2 });
