@@ -210,7 +210,15 @@ async function runSocketServer() {
       try {
         const { roomId, producerKind } = data;
         const { transport, params } = await createWebRtcTransport();
-        roomConsumerTransports[roomId][producerKind] = transport;
+        if (!roomConsumerTransports[roomId]) {
+          roomConsumerTransports[roomId] = {};
+        }
+      
+        if (!roomConsumerTransports[roomId][producerKind]) {
+          roomConsumerTransports[roomId][producerKind] = {};
+        }
+      
+        roomConsumerTransports[roomId][producerKind][transport.id]=transport;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -229,8 +237,8 @@ async function runSocketServer() {
     //클라이언트가 connectConsumerTransport 이벤트를 발생시키면, 
     //consumerTransport에 클라이언트의 DTLS 파라미터를 사용하여 연결합니다.
     socket.on('connectConsumerTransport', async (data, callback) => {
-      const { roomId, dtlsParameters, producerKind} = data;
-      await roomConsumerTransports[roomId][producerKind].connect({ dtlsParameters: data.dtlsParameters });
+      const { roomId, producerKind, transportId, dtlsParameters} = data;
+      await roomConsumerTransports[roomId][producerKind][transportId].connect({ dtlsParameters: data.dtlsParameters });
       callback();
     });
 
@@ -258,17 +266,17 @@ async function runSocketServer() {
     클라이언트가 consume 이벤트를 발생시키면, createConsumer 함수를 사용하여 미디어 소비자를 생성하고, 생성된 소비자의 정보를 클라이언트에 반환합니다.
     */
     socket.on('consume', async (data, callback) => {
-      const { roomId, producerKind, rtpCapabilities } = data;
-      const consumer = await createConsumer(roomId, producerKind, rtpCapabilities);
+      const { roomId, producerKind,transportId, rtpCapabilities } = data;
+      const consumer = await createConsumer(roomId, producerKind,transportId, rtpCapabilities);
       callback(consumer);
     });
 
     //클라이언트가 resume 이벤트를 발생시키면, 일시 중지된 소비자를 재개하고 콜백을 호출합니다.
     socket.on('resume', async (data, callback) => {
-      const { roomId, producerKind } = data;
+      const { roomId, producerKind, consumerId } = data;
       // [x] consumer 저장 로직 수정 필요
       // NOTE : client 당 consumer를 저장하는 로직이 필요할 수도 있음
-      await roomConsumers[roomId][producerKind].resume();
+      await roomConsumers[roomId][producerKind][consumerId].resume();
       callback();
     });
 
@@ -352,7 +360,7 @@ consumerTransport.consume()를 사용하여 소비자를 생성하고, 소비자
 소비자 정보를 반환합니다.
 */
 /* 특정 방에 대한 미디어 소비자 생성 함수 */
-async function createConsumer(roomId, producerKind, rtpCapabilities) {
+async function createConsumer(roomId, producerKind,transportId, rtpCapabilities) {
   console.log('createConsumer called with:', { roomId, rtpCapabilities });
 
   // [x] producer 받는 로직 변경하기 
@@ -377,16 +385,24 @@ async function createConsumer(roomId, producerKind, rtpCapabilities) {
   
   try {
     // [x] audio 처리
-    const consumer = await roomConsumerTransports[roomId][producerKind].consume({
+    const consumer = await roomConsumerTransports[roomId][producerKind][transportId].consume({
       producerId: producer.id,
       rtpCapabilities,
       paused: producer.kind === 'video',
     });
-    roomConsumers[roomId][producerKind] = consumer;
 
     if (consumer.type === 'simulcast' && producer.kind === 'video') {
       await consumer.setPreferredLayers({ spatialLayer: 2, temporalLayer: 2 });
     }
+    if (!roomConsumers[roomId]) {
+      roomConsumers[roomId] = {};
+    }
+  
+    if (!roomConsumers[roomId][producerKind]) {
+      roomConsumers[roomId][producerKind] = {};
+    }
+  
+    roomConsumers[roomId][producerKind][consumer.id]=consumer;
 
     return {
       producerId: producer.id,
