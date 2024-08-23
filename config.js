@@ -1,8 +1,17 @@
+// config.js
+require('dotenv').config();
+
+const serverUrl = process.env.SERVER_URL;
+const serverPort = parseInt(process.env.SERVER_PORT, 10);;
+const sslCrt = process.env.SSL_CERTIFICATE;
+const sslKey = process.env.SSL_KEY;
+
 module.exports = {
-  listenIp: '0.0.0.0',
-  listenPort: 3000,
-  sslCrt: '/usr/local/etc/ssl/server.crt',
-  sslKey: '/usr/local/etc/ssl/server.key',
+  listenIp: '0.0.0.0', //모든 ip로 부터 입장을 허용
+  listenPort: serverPort, //serverPort, // 소캣연결포트번호
+  sslCrt: sslCrt, // '/usr/local/etc/ssl/server.crt',
+  sslKey: sslKey, //'/usr/local/etc/ssl/server.key',
+
   mediasoup: {
     // Worker settings
     worker: {
@@ -48,8 +57,8 @@ module.exports = {
     webRtcTransport: {
       listenIps: [
         {
-          ip: '192.168.36.125',
-          announcedIp: null,
+          ip: '0.0.0.0', // 입장이 허용된 ip
+          announcedIp: serverUrl,// 어느 경로로 입장을 허가할것인가
         }
       ],
       maxIncomingBitrate: 1500000,
