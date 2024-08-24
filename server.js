@@ -23,11 +23,7 @@ let worker;
 let webServer;
 let socketServer;
 let expressApp;
-let producer;
-let consumer;
-let producerTransport;
-let consumerTransport;
-let mediasoupRouter; 
+let mediasoupRouter;
 
 const Producers = {
   WEBCAM_VIDEO: 'webcamVideo',
@@ -40,6 +36,9 @@ const roomProducers = {}; // 각 방에 대한 프로듀서 관리
 const roomConsumers = {}; // 각 방에 대한 소비자 관리
 const roomProducerTransports = {}; // 각 방에 대한 프로듀서 트랜스포트 관리
 const roomConsumerTransports = {}; // 각 방에 대한 소비자 트랜스포트 관리;
+let producers ={};
+let consumers ={};
+let participantCount = {};
 
 (async () => {
   try {
@@ -144,6 +143,7 @@ async function runSocketServer() {
       roomConsumers[roomId] = {}; 
       roomProducerTransports[roomId] = {}; 
       roomConsumerTransports[roomId] = {}; 
+      participantCount[roomId] = 0;
       
       // [x] 다 초기화 하기
     });
@@ -156,7 +156,11 @@ async function runSocketServer() {
     socket.on('joinRoom', (roomId) => {
       socket.join(roomId);
       console.log(`User joined room: ${roomId}`);
-      
+      initializeConsumer(socket.id, roomId);
+      if(participantCount[roomId]){
+        participantCount[roomId] += 1;
+        socket.to(roomId).emit('participantCountUpdate', participantCount[roomId]);
+      }
       // 방에 프로듀서가 존재하는 경우 클라이언트에게 알림
       // [x] 프로듀서 정보 4개를 다 알려주는 방식으로 변경 필요,  'newProducer'말고 다른 명령어 만들기
       // NOTE 정보 요청은 클라리언트에서 따로 request를 보내는 형식으로 변경
@@ -175,6 +179,45 @@ async function runSocketServer() {
   
 
     socket.on('disconnect', () => {
+      let roomId;
+      if(consumers[socket.id]){
+        const producerKinds = Object.values(Producers); // value를 배열로 가지고 온다.
+        for (let producerKind of producerKinds) {
+          console.log(producerKind);
+          let transportId;
+          let consumerId;
+
+          if (consumers[socket.id]) {
+            roomId = consumers[socket.id].roomId;
+          } else {
+            continue;
+          }
+
+          if (consumers[socket.id][producerKind]) {
+            transportId=consumers[socket.id][producerKind].transportId;
+            consumerId=consumers[socket.id][producerKind].consumerId;
+          } 
+          
+          if (transportId && roomConsumerTransports[roomId] && roomConsumerTransports[roomId][producerKind]) {
+            delete roomConsumerTransports[roomId][producerKind][transportId];
+          } else {
+            continue;
+          }
+  
+          if (consumerId && roomConsumers[roomId] && roomConsumers[roomId][producerKind]) {
+            delete roomConsumers[roomId][producerKind][consumerId];
+          } else {
+            continue;
+          }
+        }
+        delete consumers[socket.id];
+        
+        if(participantCount[roomId]){
+          participantCount[roomId] -= 1;
+          socket.to(roomId).emit('participantCountUpdate', participantCount[roomId]);
+        }
+      }
+      //TODO producer 처리
       console.log('client disconnected');
     });
 
@@ -182,7 +225,6 @@ async function runSocketServer() {
       console.error('client connection error', err);
     });
 
-    ////////////////////////////////////////////////////
     //클라이언트가 getRouterRtpCapabilities 이벤트를 발생시키면, mediasoupRouter의 RTP 능력을 클라이언트에 반환합니다.
     socket.on('getRouterRtpCapabilities', (data, callback) => {
       callback(mediasoupRouter.rtpCapabilities);
@@ -219,6 +261,7 @@ async function runSocketServer() {
         }
       
         roomConsumerTransports[roomId][producerKind][transport.id]=transport;
+        consumers[socket.id][producerKind].transportId = transport.id;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -250,7 +293,7 @@ async function runSocketServer() {
     socket.on('produce', async (data, callback) => {
       // [x] 어떤 영상/음성 보내는지 추가로 전송필요 -> producerKind를 입력받기
       const { roomId, kind, rtpParameters, producerKind } = data;
-      producer = await roomProducerTransports[roomId][producerKind].produce({ kind, rtpParameters });
+      const producer = await roomProducerTransports[roomId][producerKind].produce({ kind, rtpParameters });
       
       // [x] 저장 로직 변경 필요
       roomProducers[roomId][producerKind] = producer;
@@ -268,6 +311,7 @@ async function runSocketServer() {
     socket.on('consume', async (data, callback) => {
       const { roomId, producerKind,transportId, rtpCapabilities } = data;
       const consumer = await createConsumer(roomId, producerKind,transportId, rtpCapabilities);
+      consumers[socket.id][producerKind].consumerId = consumer.id;
       callback(consumer);
     });
 
@@ -416,4 +460,27 @@ async function createConsumer(roomId, producerKind,transportId, rtpCapabilities)
     console.error('Consume failed', error);
     return;
   }
+}
+
+// 컨슈머 생성시 사전에 할당
+function initializeConsumer(socketId, roomId) {
+  consumers[socketId] = {
+      roomId: roomId,
+      [Producers.WEBCAM_VIDEO]: {
+          transportId: null,
+          consumerId: null
+      },
+      [Producers.WEBCAM_AUDIO]: {
+          transportId: null,
+          consumerId: null
+      },
+      [Producers.SCREEN_SHARE_VIDEO]: {
+          transportId: null,
+          consumerId: null
+      },
+      [Producers.SCREEN_SHARE_AUDIO]: {
+          transportId: null,
+          consumerId: null
+      }
+  };
 }
