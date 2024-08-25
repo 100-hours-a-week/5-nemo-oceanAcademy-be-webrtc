@@ -10,9 +10,6 @@ RUN apt-get update && apt-get install -y \
     python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# 패키지 매니저 (yarn) 설치
-RUN npm install -g yarn
-
 # package.json과 package-lock.json 복사
 COPY package*.json ./
 
