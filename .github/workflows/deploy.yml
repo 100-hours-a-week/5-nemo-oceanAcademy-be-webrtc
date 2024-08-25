@@ -54,11 +54,15 @@ jobs:
           # Pull the latest image
           docker pull ktbnemo/nemo-oceanacademy-webrtc:latest
 
+          # Copy the .env file to the container's /usr/src/app directory
+          docker cp /tmp/.env MediaServer-container:/usr/src/app/.env
+
           # Run the new container
           docker run -d \
           -p 3000:3000 \
           $(for port in $(seq 3001 3200); do echo -p $port:$port; done) \
           $(for port in $(seq 10000 10200); do echo -p $port:$port; done) \
+          -v /etc/letsencrypt:/etc/letsencrypt \
           --env-file /tmp/.env \
           --name MediaServer-container ktbnemo/nemo-oceanacademy-webrtc:latest
         EOF
