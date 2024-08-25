@@ -60,8 +60,8 @@ jobs:
           # Run the new container
           docker run -d \
           -p 3000:3000 \
-          $(for port in $(seq 3001 3200); do echo -p $port:$port; done) \
-          $(for port in $(seq 10000 10200); do echo -p $port:$port; done) \
+          $(for port in $(seq 3001 3200); do echo -p $port:$port/tcp; done) \
+          $(for port in $(seq 10000 10200); do echo -p $port:$port/udp; done) \
           -v /etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/fullchain1.pem:/etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/fullchain1.pem \
           -v /etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/privkey1.pem:/etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/privkey1.pem \
           --name MediaServer-container ktbnemo/nemo-oceanacademy-webrtc:latest
