@@ -19,6 +19,10 @@ COPY .env .env
 # 환경 변수 파일 복사
 COPY .env /usr/src/app/.env
 
+# 환경 변수 파일이 제대로 복사되었는지 확인
+RUN ls -al /usr/src/app
+RUN cat /usr/src/app/.env
+
 # 애플리케이션 실행 포트 개방
 EXPOSE 3000
 
