@@ -27,4 +27,4 @@ RUN cat /usr/src/app/.env
 EXPOSE 3000
 
 # 애플리케이션 실행
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
