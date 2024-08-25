@@ -64,6 +64,5 @@ jobs:
           $(for port in $(seq 10000 10200); do echo -p $port:$port; done) \
           -v /etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/fullchain1.pem:/etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/fullchain1.pem \
           -v /etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/privkey1.pem:/etc/letsencrypt/archive/rtcserver.nemooceanacademy.com/privkey1.pem \
-          --env-file /tmp/.env \
           --name MediaServer-container ktbnemo/nemo-oceanacademy-webrtc:latest
         EOF
