@@ -57,7 +57,8 @@ jobs:
           # Run the new container
           docker run -d \
           -p 3000:3000 \
-          $(for port in $(seq 10000 60000); do echo -p $port:$port; done) \
+          $(for port in $(seq 3001 3200); do echo -p $port:$port; done) \
+          $(for port in $(seq 10000 10200); do echo -p $port:$port; done) \
           --env-file /tmp/.env \
           --name MediaServer-container ktbnemo/nemo-oceanacademy-webrtc:latest
         EOF
