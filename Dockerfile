@@ -4,6 +4,15 @@ FROM node:22.7.0
 # 작업 디렉터리 설정
 WORKDIR /usr/src/app
 
+# 시스템 종속성 설치 (빌드 도구 포함)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# 패키지 매니저 (yarn) 설치
+RUN npm install -g yarn
+
 # package.json과 package-lock.json 복사
 COPY package*.json ./
 
