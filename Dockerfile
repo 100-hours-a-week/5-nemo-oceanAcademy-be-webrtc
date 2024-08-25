@@ -1,5 +1,5 @@
 # 베이스 이미지 설정
-FROM node:22
+FROM node:22.7.0
 
 # 작업 디렉터리 설정
 WORKDIR /usr/src/app
