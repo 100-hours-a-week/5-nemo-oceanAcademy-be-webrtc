@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.16.4",
+    "dotenv": "^16.4.5",
     "mediasoup": "3",
     "mediasoup-client": "3",
     "socket.io": "^2.2.0",
