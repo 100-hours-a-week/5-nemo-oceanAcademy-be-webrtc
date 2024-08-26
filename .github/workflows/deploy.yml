@@ -36,7 +36,7 @@ jobs:
           sudo fuser -k 3000/tcp || true
           
           # Start the application in the background
-          nohup node app.js > output.log 2>&1 &
+          nohup node server.js > output.log 2>&1 &
         EOF
 # name: Docker Node.js Deploy
 
