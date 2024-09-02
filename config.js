@@ -5,18 +5,20 @@ const serverUrl = process.env.SERVER_URL;
 const serverPort = parseInt(process.env.SERVER_PORT, 10);;
 const sslCrt = process.env.SSL_CERTIFICATE;
 const sslKey = process.env.SSL_KEY;
+const sentryDSN = process.env.SENTRY_DSN;
 
 module.exports = {
   listenIp: '0.0.0.0', //모든 ip로 부터 입장을 허용
-  listenPort: serverPort, //serverPort, // 소캣연결포트번호
-  sslCrt: sslCrt, // '/usr/local/etc/ssl/server.crt',
-  sslKey: sslKey, //'/usr/local/etc/ssl/server.key',
+  listenPort: serverPort,
+  sslCrt: sslCrt, 
+  sslKey: sslKey,
+  sentryDSN: sentryDSN,
 
   mediasoup: {
     // Worker settings
     worker: {
       rtcMinPort: 10000,
-      rtcMaxPort: 10100,
+      rtcMaxPort: 60000,
       logLevel: 'warn',
       logTags: [
         'info',
@@ -48,7 +50,12 @@ module.exports = {
             clockRate: 90000,
             parameters:
               {
-                'x-google-start-bitrate': 1000
+                //'x-google-start-bitrate': 1000
+                'packetization-mode': 1,
+                'profile-level-id': '42e01f',
+                'x-google-start-bitrate': 1500,
+                'x-google-max-bitrate': 5000,
+                'x-google-min-bitrate': 2000,
               }
           },
         ]
@@ -61,8 +68,8 @@ module.exports = {
           announcedIp: serverUrl,// 어느 경로로 입장을 허가할것인가
         }
       ],
-      maxIncomingBitrate: 1500000,
-      initialAvailableOutgoingBitrate: 1000000,
+      maxIncomingBitrate: 2000000,//1500000,
+      initialAvailableOutgoingBitrate: 1500000,//1000000,
     }
   }
 };
