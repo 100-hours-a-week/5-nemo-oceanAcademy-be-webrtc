@@ -10,13 +10,28 @@ WebRTC 트랜스포트 생성: WebRTC 전송을 위한 트랜스포트를 설정
 이 코드는 WebRTC를 통해 실시간 미디어 스트리밍 애플리케이션을 구축하는 데 필요한 주요 기능을 모두 포함하고 있습니다.
 각 단계는 서버의 구성 요소를 설정하고 클라이언트와의 통신을 관리합니다.
 */
+const Sentry = require("@sentry/node");
+const { nodeProfilingIntegration } = require("@sentry/profiling-node");
+const config = require('./config');
+const { sentryDSN } = config;
+
+Sentry.init({
+  dsn: sentryDSN,
+  integrations: [
+    nodeProfilingIntegration(),
+  ],
+  // Tracing
+  tracesSampleRate: 1.0, //  Capture 100% of the transactions
+
+  // Set sampling rate for profiling - this is relative to tracesSampleRate
+  profilesSampleRate: 1.0,
+});
 
 const mediasoup = require('mediasoup');
 const fs = require('fs');
 const https = require('https');
 const express = require('express');
 const socketIO = require('socket.io');
-const config = require('./config');
 
 // Global variables
 let worker;
@@ -63,7 +78,11 @@ async function runExpressApp() {
   expressApp = express();
   expressApp.use(express.json());
   expressApp.use(express.static(__dirname));
-
+  // 첫번째 미들웨어로 설정 
+  //expressApp.use(Sentry.Handlers.requestHandler());
+  // 모든 에러를 Sentry로 전송한 후 사용자에게 응답
+  //expressApp.use(Sentry.Handlers.errorHandler());
+  Sentry.setupExpressErrorHandler(expressApp);
   expressApp.use((error, req, res, next) => {
     if (error) {
       console.warn('Express app error,', error.message);
@@ -98,6 +117,7 @@ async function runWebServer() {
   };
   webServer = https.createServer(tls, expressApp);
   webServer.on('error', (err) => {
+    Sentry.captureException(err);  // Sentry로 오류 전송
     console.error('starting web server failed:', err.message);
   });
 
@@ -137,6 +157,11 @@ async function runSocketServer() {
     socket.on('startRoom', (roomId) => {
       socket.join(roomId);
       console.log(`User started room: ${roomId}`);
+      try {
+        throw new Error('This is a test error');
+      } catch (err) {
+        Sentry.captureException(err); // Sentry에 에러 전송
+      }
 
       // roomId의 producer들을 저장하기 위해 객체를 만들어 둠
       roomProducers[roomId] = {};
@@ -144,8 +169,7 @@ async function runSocketServer() {
       roomProducerTransports[roomId] = {}; 
       roomConsumerTransports[roomId] = {}; 
       participantCount[roomId] = 0;
-      
-      // [x] 다 초기화 하기
+      initializeProducer(socket.id, roomId);
     });
 
 
@@ -154,6 +178,10 @@ async function runSocketServer() {
     //socket.emit('newProducer')는 클라이언트에게 newProducer 이벤트를 발생시킵니다.
     // 클라이언트로부터 방 참가 요청 수신
     socket.on('joinRoom', (roomId) => {
+      if(!participantCount[roomId]){
+        console.log("no start room");
+        return;
+      }
       socket.join(roomId);
       console.log(`User joined room: ${roomId}`);
       initializeConsumer(socket.id, roomId);
@@ -217,11 +245,48 @@ async function runSocketServer() {
           socket.to(roomId).emit('participantCountUpdate', participantCount[roomId]);
         }
       }
+
+      if(producers[socket.id]){
+        const producerKinds = Object.values(Producers); // value를 배열로 가지고 온다.
+        for (let producerKind of producerKinds) {
+          let transportId;
+          let producerId;
+
+          if (producers[socket.id]) {
+            roomId = producers[socket.id].roomId;
+          } else {
+            continue;
+          }
+
+          if (producers[socket.id][producerKind]) {
+            transportId=producers[socket.id][producerKind].transportId;
+            producerId=producers[socket.id][producerKind].producerId;
+          } 
+          
+          if (transportId && roomProducerTransports[roomId] && roomProducerTransports[roomId][producerKind]) {
+            delete roomProducerTransports[roomId][producerKind];
+          } else {
+            continue;
+          }
+  
+          if (producerId && roomProducers[roomId] && roomProducers[roomId][producerKind]) {
+            delete roomProducers[roomId][producerKind];
+          } else {
+            continue;
+          }
+        }
+        delete producers[socket.id];
+        delete participantCount[roomId];
+        delete roomProducers[roomId];
+        delete roomProducerTransports[roomId];
+        //TODO 방에 참여중인 컨슈머 모두 disconnect
+      }
       //TODO producer 처리
       console.log('client disconnected');
     });
 
-    socket.on('connect_error', (err) => {
+    socketServer.on('connect_error', (err) => {
+      Sentry.captureException(err);  // Sentry로 오류 전송
       console.error('client connection error', err);
     });
 
@@ -238,7 +303,15 @@ async function runSocketServer() {
       try {
         const { roomId, producerKind } = data;
         const { transport, params } = await createWebRtcTransport();
+        if (!roomProducerTransports[roomId]) {
+          roomConsumerTransports[roomId] = {};
+        }
+        if (!roomProducerTransports[roomId][producerKind]) {
+          roomConsumerTransports[roomId][producerKind] = {};
+        }
+      
         roomProducerTransports[roomId][producerKind] = transport;
+        producers[socket.id][producerKind].transportId = transport.id;
         callback(params);
       } catch (err) {
         console.error(err);
@@ -294,6 +367,7 @@ async function runSocketServer() {
       // [x] 어떤 영상/음성 보내는지 추가로 전송필요 -> producerKind를 입력받기
       const { roomId, kind, rtpParameters, producerKind } = data;
       const producer = await roomProducerTransports[roomId][producerKind].produce({ kind, rtpParameters });
+      producers[socket.id][producerKind].producerId = producer.id;
       
       // [x] 저장 로직 변경 필요
       roomProducers[roomId][producerKind] = producer;
@@ -484,3 +558,41 @@ function initializeConsumer(socketId, roomId) {
       }
   };
 }
+
+// 컨슈머 생성시 사전에 할당
+function initializeProducer(socketId, roomId) {
+  producers[socketId] = {
+      roomId: roomId,
+      [Producers.WEBCAM_VIDEO]: {
+          transportId: null,
+          produceId: null
+      },
+      [Producers.WEBCAM_AUDIO]: {
+          transportId: null,
+          produceId: null
+      },
+      [Producers.SCREEN_SHARE_VIDEO]: {
+          transportId: null,
+          produceId: null
+      },
+      [Producers.SCREEN_SHARE_AUDIO]: {
+          transportId: null,
+          produceId: null
+      }
+  };
+}
+
+//동기적으로 발생한 예기치 않은 오류 캐치
+//try-catch 블록으로 처리되지 않은 동기적 오류가 발생했을 때 호출
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  Sentry.captureException(err);  // Sentry로 오류 전송
+  //process.exit(1);  // 필요한 경우 프로세스를 종료
+});
+
+//Promise에서 발생한 미처리된 거부 캐치
+//이벤트는 Promise에서 처리되지 않은 거부(rejection)가 발생했을 때 호출
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  Sentry.captureException(reason);  // Sentry로 오류 전송
+});
