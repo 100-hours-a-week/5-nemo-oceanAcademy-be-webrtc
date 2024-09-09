@@ -178,10 +178,10 @@ async function runSocketServer() {
     //socket.emit('newProducer')는 클라이언트에게 newProducer 이벤트를 발생시킵니다.
     // 클라이언트로부터 방 참가 요청 수신
     socket.on('joinRoom', (roomId) => {
-      if(!participantCount[roomId]){
-        console.log("no start room");
-        return;
-      }
+      // if(!participantCount[roomId]){
+      //   console.log("no start room");
+      //   return;
+      // }
       socket.join(roomId);
       console.log(`User joined room: ${roomId}`);
       initializeConsumer(socket.id, roomId);
