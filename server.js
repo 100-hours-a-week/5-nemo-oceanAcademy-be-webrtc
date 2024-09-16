@@ -198,6 +198,10 @@ async function runSocketServer() {
             continue;
           }
 
+          //teacherLeft 이벤트 emit
+          socket.to(roomId).emit('teacherLeft');
+          console.log(roomId);
+
           if (producers[socket.id][producerKind]) {
             transportId=producers[socket.id][producerKind].transportId;
             producerId=producers[socket.id][producerKind].producerId;
@@ -222,6 +226,7 @@ async function runSocketServer() {
         //TODO 방에 참여중인 컨슈머 모두 disconnect
       }
       console.log(`client disconnected: ${roomId}`);
+      socket.leave(roomId);
     });
 
     socketServer.on('connect_error', (err) => {
