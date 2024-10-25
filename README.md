@@ -166,7 +166,7 @@ sudo chmod 644 /usr/local/etc/ssl/server.crt
 
 ## 데모영상
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/vAiGR7wuHDE?si=n7wtvJx-Y7rJ4D-4" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+[![Video Label](http://img.youtube.com/vi/vAiGR7wuHDE/0.jpg)](https://youtu.be/vAiGR7wuHDE)
 
 
 ## Contribution
